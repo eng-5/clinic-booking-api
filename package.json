@@ -4,10 +4,29 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "test": "cross-env NODE_ENV=test jest --runInBand",
+    "migrate:dev": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL",
+    "migrate:test": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL_TEST",
+    "migrate:down:dev": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js down --database-url-var DATABASE_URL"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "eslint": "^10.14.0",
+    "jest": "^30.5.2",
+    "node-pg-migrate": "^9.0.0",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.3.1"
+  }
 }
