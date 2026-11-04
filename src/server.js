@@ -10,7 +10,7 @@ for (const key of ['DATABASE_URL', 'API_KEY']) {
 }
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
-const app = createApp({ pool, clock: new Date(), apiKey: process.env.API_KEY });
+const app = createApp({ pool, clock: () => new Date(), apiKey: process.env.API_KEY });
 
 const port = process.env.PORT || 3000;
 const server = app.listen(port, () => console.log(`Listening on ${port}`));
