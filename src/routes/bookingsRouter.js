@@ -1,38 +1,22 @@
+// src/routes/bookingsRouter.js
+//
+// Also a factory: createApp calls bookingsRouter({ pool, clock }) and mounts the result.
+// Paths here are relative to the mount point, so '/' means /bookings and '/:id' means /bookings/:id.
+
 const express = require('express');
-const router = express.Router();
-const {
-    bookSlot,
-    getAllBookings,
-    getBooking,
-    deleteBooking
-} = require('../controllers/bookingsController');
+const bookingsController = require('../controllers/bookingsController');
 
-router.route('/')
-    .post(bookSlot)
-    .get(getAllBookings);
+module.exports = ({ pool, clock }) => {
+    const router = express.Router();
+    const { bookSlot, getAllBookings, getBooking, deleteBooking } = bookingsController({ pool, clock });
 
+    router.route('/')
+        .post(bookSlot)          // Book a slot (levels 1-5)
+        .get(getAllBookings);    // Level 4: list a person's bookings
 
-router.route('/:id')
-    .get(getBooking)
-    .delete(deleteBooking);
-// POST
-// /bookings
-// Book a slot (levels 1–5)
+    router.route('/:id')
+        .get(getBooking)         // Level 1: get a booking
+        .delete(deleteBooking);  // Level 3: cancel a booking
 
-// GET
-// /bookings
-// Level 4 · List a person's bookings
-
-// GET
-// /bookings/{id}
-// Level 1 · Get a booking
-
-// DELETE
-// /bookings/{id}
-// Level 3 · Cancel a booking
-
-
-
-
-
-module.exports = router;
+    return router;
+};

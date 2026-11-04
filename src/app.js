@@ -1,6 +1,7 @@
 // src/app.js
 const express = require('express');
 const { randomUUID } = require('crypto');
+const pino = require('pino');
 const pinoHttp = require('pino-http');
 
 const verifyApiKey = require('./middleware/internalAuth');
@@ -35,6 +36,15 @@ function createApp({ pool, clock, apiKey }) {
             if (res.statusCode >= 400) return 'warn';
             return 'info';
         },
+        // Never log query strings: GET /bookings?email=... would put patients' emails in the logs.
+        serializers: {
+            req: (req) => {
+                const serialized = pino.stdSerializers.req(req);
+                serialized.url = serialized.url.split('?')[0];
+                delete serialized.query;
+                return serialized;
+            },
+        },
         redact: [
             'req.headers["x-api-key"]',
             'req.headers.authorization',
@@ -58,10 +68,10 @@ function createApp({ pool, clock, apiKey }) {
     app.use(verifyApiKey(apiKey));
     app.use(express.json({ limit: '100kb' }));
 
-    // 4. Routes. In step 1.7 these become factories: bookingsRouter({ pool, clock }), etc.
-    app.use('/bookings', bookingsRouter);
-    app.use('/slots', slotsRouter);
-    app.use('/reset', resetRouter);
+    // 4. Routes. Each router is a factory that receives the dependencies it needs.
+    app.use('/bookings', bookingsRouter({ pool, clock }));
+    app.use('/slots', slotsRouter({ pool, clock }));
+    app.use('/reset', resetRouter({ pool, clock }));
 
     // 5. Unknown routes, then the one error handler. Must stay last.
     app.use((req, res) => res.status(404).json({ error: 'route not found' }));

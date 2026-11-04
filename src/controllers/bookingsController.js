@@ -1,16 +1,14 @@
-const catchAsync = require('../utils/catchAsync');
-const AppError = require('../utils/appError');
+// src/controllers/bookingsController.js
+//
+// A factory: it RECEIVES its dependencies instead of importing globals.
+// That is what lets tests pass a fixed clock and a test database.
+// pool and clock are unused until the real handlers replace these stubs.
 
+const notImplemented = require('../utils/notImplemented');
 
-exports.bookSlot = catchAsync(async (req, res, next) => {
-
-})
-exports.getAllBookings = catchAsync(async (req, res, next) => {
-
-})
-exports.getBooking = catchAsync(async (req, res, next) => {
-
-})
-exports.deleteBooking = catchAsync(async (req, res, next) => {
-
-})
+module.exports = ({ pool, clock }) => ({
+    bookSlot: notImplemented,
+    getAllBookings: notImplemented,
+    getBooking: notImplemented,
+    deleteBooking: notImplemented,
+});

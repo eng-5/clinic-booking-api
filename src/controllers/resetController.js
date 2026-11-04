@@ -1,7 +1,6 @@
-const catchAsync = require('../utils/catchAsync');
-const AppError = require('../utils/appError');
+// src/controllers/resetController.js
+const notImplemented = require('../utils/notImplemented');
 
-
-exports.resetAllSlots = catchAsync(async (req, res, next) => {
-
-})
+module.exports = ({ pool, clock }) => ({
+    resetAllSlots: notImplemented,
+});

@@ -1,7 +1,6 @@
-const catchAsync = require('../utils/catchAsync');
-const AppError = require('../utils/appError');
+// src/controllers/slotsController.js
+const notImplemented = require('../utils/notImplemented');
 
-
-exports.getSlots = catchAsync(async (req, res, next) => {
-    res.status(200).json({ status: 'success' })
-})
+module.exports = ({ pool, clock }) => ({
+    getSlots: notImplemented,
+});

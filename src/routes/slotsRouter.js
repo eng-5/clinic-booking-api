@@ -1,10 +1,12 @@
+// src/routes/slotsRouter.js
 const express = require('express');
-const router = express.Router();
-const { getSlots } = require('../controllers/slotsController');
+const slotsController = require('../controllers/slotsController');
 
-router.get('/', getSlots)
-// GET
-// /slots
-// Level 1 · List slots
+module.exports = ({ pool, clock }) => {
+    const router = express.Router();
+    const { getSlots } = slotsController({ pool, clock });
 
-module.exports = router;
+    router.get('/', getSlots); // Level 1: list slots
+
+    return router;
+}

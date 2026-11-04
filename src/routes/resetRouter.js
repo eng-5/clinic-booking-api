@@ -1,12 +1,12 @@
+// src/routes/resetRouter.js
 const express = require('express');
-const router = express.Router();
-const { resetAllSlots } = require('../controllers/resetController');
+const resetController = require('../controllers/resetController');
 
-router.post('/', resetAllSlots);
+module.exports = ({ pool, clock }) => {
+    const router = express.Router();
+    const { resetAllSlots } = resetController({ pool, clock });
 
-// POST
-// /reset
-// Level 1 · Replace all slots
+    router.post('/', resetAllSlots); // Level 1: replace all slots
 
-
-module.exports = router;
+    return router;
+};
