@@ -1,0 +1,42 @@
+# Runs on every push and pull request: install, migrate a throwaway Postgres, run the tests.
+name: ci
+ 
+on:
+  push:
+  pull_request:
+ 
+permissions:
+  contents: read
+ 
+jobs:
+  test:
+    runs-on: ubuntu-latest
+ 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: clinic_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+ 
+    env:
+      DATABASE_URL_TEST: postgresql://postgres:postgres@localhost:5432/clinic_test
+      # Must differ from DATABASE_URL_TEST: tests/helpers.js refuses to run if they are equal.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/clinic_dev_unused
+ 
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run migrate:test
+      - run: npm test
