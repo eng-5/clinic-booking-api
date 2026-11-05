@@ -60,8 +60,8 @@ test('a wrong key of the SAME length as the real one is rejected', async () => {
 test('the correct key is accepted', async () => {
     const res = await request(ctx.app).get('/slots').set('x-api-key', ctx.apiKey);
 
-    // Tightened to 200 in Milestone 2, when GET /slots is implemented.
-    expect(res.statusCode).not.toBe(401);
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.body.slots)).toBe(true);
 });
 
 test('a broken body with no key is rejected with 401, not 400', async () => {
