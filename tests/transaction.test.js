@@ -7,8 +7,9 @@
 require('dotenv').config({ quiet: true });
 const { Pool } = require('pg');
 const { withTransaction } = require('../src/db/transaction');
+const { testDatabaseUrl } = require('./helpers');
 
-const url = process.env.DATABASE_URL_TEST;
+const url = testDatabaseUrl();
 // A deliberately tiny pool: if a failed transaction leaked its connection, the third
 // call below would wait forever and the test would time out.
 const pool = new Pool({ connectionString: url, max: 2 });
