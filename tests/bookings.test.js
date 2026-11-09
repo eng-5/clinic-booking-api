@@ -116,8 +116,29 @@ describe('POST /bookings: happy path (Level 1)', () => {
         expect(res.status).toBe(201);
     });
 
-    // Level 3 (milestone 4) will add the database rule that makes this pass.
-    test.todo('booking a slot that already has a confirmed booking returns 409');
+});
+
+describe('POST /bookings: a slot can only be booked once (Level 3)', () => {
+    test('a second booking of the same slot returns 409 and creates nothing', async () => {
+        const first = await book(valid);
+        const second = await book({ ...valid, name: 'Bola Eze', email: 'bola@example.com' });
+
+        expect(first.status).toBe(201);
+        expectErrorShape(second, 409);
+        expect(await rowCount()).toBe(1);
+    });
+
+    test('the same person booking the same slot twice also gets 409', async () => {
+        await book(valid);
+
+        expectErrorShape(await book(valid), 409);
+    });
+
+    test('a different slot can still be booked', async () => {
+        await book(valid);
+
+        expect((await book({ ...valid, slot_id: 'f2' })).status).toBe(201);
+    });
 });
 
 describe('GET /bookings/:id (Level 1)', () => {
