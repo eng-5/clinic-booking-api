@@ -14,7 +14,14 @@ for (const key of ['DATABASE_URL', 'API_KEY']) {
     }
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
+// connectionTimeoutMillis: if the database is unreachable, fail after 10 seconds instead of
+// waiting forever. That turns "database down" into a clear 503 from /health, rather than a
+// health check that hangs until the platform gives up.
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 10,
+    connectionTimeoutMillis: 10_000,
+});
 
 // The database can drop an idle connection (Neon suspends idle compute). Without this
 // listener that emits an unhandled 'error' event, which crashes the whole process.
