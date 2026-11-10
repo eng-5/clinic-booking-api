@@ -1,0 +1,24 @@
+# Pings the service every 10 minutes so the free host doesn't spin down while it is being graded.
+# Setup: repo Settings > Secrets and variables > Actions > Variables > New repository variable
+#   HEALTH_URL = https://<your-service>/health
+# Notes: GitHub only runs scheduled workflows from the default branch, runs can be delayed,
+# and GitHub may disable schedules in a repo with no activity for 60 days.
+# Turn this workflow off once the assessment team has contacted you.
+name: keepalive
+ 
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+ 
+permissions: {}
+ 
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.HEALTH_URL != '' }}
+    steps:
+      - name: Ping /health
+        env:
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+        run: curl --fail --silent --show-error --max-time 90 --retry 3 --retry-delay 10 --retry-all-errors "$HEALTH_URL"
