@@ -46,10 +46,3 @@ function parseListQuery({ email, limit, cursor }) {
 }
 
 module.exports = { parseListQuery, encodeCursor, decodeCursor };
-const LIST_BOOKINGS = `
-    SELECT seq, ${BOOKING_COLUMNS}
-    FROM bookings
-    WHERE lower(email) = $1 AND ($2::bigint IS NULL OR seq > $2::bigint)
-    ORDER BY seq ASC
-    LIMIT $3
-`;
