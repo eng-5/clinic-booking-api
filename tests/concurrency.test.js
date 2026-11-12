@@ -28,7 +28,10 @@ const confirmedRows = async (slotId) =>
         "SELECT count(*) FROM bookings WHERE slot_id = $1 AND status = 'confirmed'", [slotId]
     )).rows[0].count);
 
-beforeEach(() => request(ctx.app).post('/reset').set(auth).send({ slots: SLOTS }));
+beforeEach(async () => {
+    const res = await request(ctx.app).post('/reset').set(auth).send({ slots: SLOTS });
+    expect(res.status).toBe(200); // a bad fixture must fail loudly, not leave stale data behind
+});
 
 describe('booking the same slot at the same moment', () => {
     test('20 different people at once: exactly one 201, nineteen 409, nothing else', async () => {
@@ -65,11 +68,12 @@ describe('booking the same slot at the same moment', () => {
         expect(slots.find((s) => s.id === 'f1').available).toBe(false);
     });
 
-    test('the same person clicking 10 times at once also books once', async () => {
+    test('the same person clicking 10 times at once books once (the rest are 409, or 429 past the rate limit)', async () => {
         const responses = await parallel(10, () => patient('f1', 1));
 
         expect(count(responses, 201)).toBe(1);
-        expect(count(responses, 409)).toBe(9);
+        expect(responses.filter((r) => ![201, 409, 429].includes(r.status))).toEqual([]);
+        expect(count(responses, 429)).toBe(5); // 5 attempts per email per minute
         expect(await confirmedRows('f1')).toBe(1);
     });
 
@@ -86,16 +90,19 @@ describe('booking the same slot at the same moment', () => {
 describe('a booking race against a reset', () => {
     // If a reset deletes the slot between "does it exist?" and "insert", the database
     // rejects the insert (foreign key, code 23503). That must be a clean 404, not a 500.
-    // A fake pool makes this deterministic, because the real race is nearly impossible to time.
+    // The real race is nearly impossible to time, so the failure is injected deterministically.
     test('a slot deleted mid-booking is reported as 404, not a crash', async () => {
-        const pool = {
-            query: jest.fn()
-                .mockResolvedValueOnce({ rows: [{ id: 'f1', start_at: new Date('2026-12-11T09:00:00Z') }] })
-                .mockRejectedValueOnce(Object.assign(new Error('foreign key violation'), { code: '23503' })),
+        // The real database for everything, except that the INSERT fails the way it would if
+        // /reset had just deleted the slot (foreign key violation, code 23503).
+        const racingPool = {
+            connect: () => ctx.pool.connect(),
+            query: (sql, params) => /INSERT INTO bookings/i.test(sql)
+                ? Promise.reject(Object.assign(new Error('foreign key violation'), { code: '23503' }))
+                : ctx.pool.query(sql, params),
         };
-        const app = createApp({ pool, clock: () => NOW, apiKey: 'k' });
+        const app = createApp({ pool: racingPool, clock: () => NOW, apiKey: ctx.apiKey });
 
-        const res = await request(app).post('/bookings').set({ 'X-API-Key': 'k' }).send(patient('f1', 1));
+        const res = await request(app).post('/bookings').set(auth).send(patient('f1', 1));
 
         expect(res.status).toBe(404);
         expect(typeof res.body.error).toBe('string');
