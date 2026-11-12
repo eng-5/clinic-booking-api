@@ -7,8 +7,8 @@
 //   bash:        BASE_URL=https://your-service.onrender.com API_KEY=... node scripts/smoke.js
 //   PowerShell:  $env:BASE_URL="https://..."; $env:API_KEY="..."; npm run smoke
 //
-// It finishes by resetting to an empty slot list. Add steps here as new levels are built
-// (idempotency, pagination, rate limiting).
+// It covers Levels 1 to 5 and finishes by resetting to an empty slot list (which also clears
+// idempotency keys and rate-limit counters, so it can be re-run straight away).
 
 const BASE = (process.env.BASE_URL || '').replace(/\/+$/, '');
 const KEY = process.env.API_KEY;
@@ -19,9 +19,9 @@ if (!BASE || !KEY) {
 
 const results = [];
 
-async function call(method, path, { body, raw, key = KEY } = {}) {
+async function call(method, path, { body, raw, key = KEY, headers: extra = {} } = {}) {
     const started = Date.now();
-    const headers = { 'content-type': 'application/json' };
+    const headers = { 'content-type': 'application/json', ...extra };
     if (key) headers['x-api-key'] = key;
     const res = await fetch(BASE + path, {
         method,
@@ -31,7 +31,7 @@ async function call(method, path, { body, raw, key = KEY } = {}) {
     });
     let json = null;
     try { json = await res.json(); } catch { /* not JSON */ }
-    return { status: res.status, body: json, ms: Date.now() - started };
+    return { status: res.status, body: json, headers: res.headers, ms: Date.now() - started };
 }
 
 const expect = (condition, message) => { if (!condition) throw new Error(message); };
@@ -54,6 +54,7 @@ const t0 = Date.now() + 48 * hour;
 const slots = [
     { id: 'smoke-1', provider: 'Smoke Dr', start: iso(t0), end: iso(t0 + hour / 2) },
     { id: 'smoke-2', provider: 'Smoke Dr', start: iso(t0 + hour), end: iso(t0 + 1.5 * hour) },
+    { id: 'smoke-3', provider: 'Smoke Dr', start: iso(t0 + 2 * hour), end: iso(t0 + 2.5 * hour) },
 ];
 const person = (slot_id, n = 1) => ({ slot_id, name: `Smoke ${n}`, email: `smoke${n}@example.com` });
 const availability = async () =>
@@ -83,7 +84,7 @@ async function main() {
         expect(r.status === 401, `got ${r.status}`);
         return r.ms;
     });
-    await step('reset installs two future slots', async () => {
+    await step('reset installs three future slots', async () => {
         const r = await call('POST', '/reset', { body: { slots } });
         expect(r.status === 200, `got ${r.status} ${JSON.stringify(r.body)}`);
         return r.ms;
@@ -91,7 +92,7 @@ async function main() {
     await step('slots are listed in order and available', async () => {
         const r = await call('GET', '/slots');
         expect(r.status === 200, `got ${r.status}`);
-        expect(r.body.slots.map((s) => s.id).join() === 'smoke-1,smoke-2', 'wrong order or content');
+        expect(r.body.slots.map((s) => s.id).join() === 'smoke-1,smoke-2,smoke-3', 'wrong order or content');
         expect(r.body.slots.every((s) => s.available === true), 'slots should be available');
         return r.ms;
     });
@@ -157,6 +158,41 @@ async function main() {
         const r = await call('GET', '/bookings/does-not-exist');
         expect(r.status === 404, `got ${r.status}`);
         return r.ms;
+    });
+    await step('Level 4: an idempotent retry returns the same booking and makes no second one', async () => {
+        const send = () => call('POST', '/bookings', { body: person('smoke-1', 21), headers: { 'idempotency-key': 'smoke-key-1' } });
+        const first = await send();
+        const again = await send();
+        expect(first.status === 201, `first: got ${first.status} ${JSON.stringify(first.body)}`);
+        expect(again.status === 201 && again.body.id === first.body.id, `retry: got ${again.status}, id ${again.body?.id} vs ${first.body.id}`);
+        expect(again.headers.get('idempotent-replayed') === 'true', 'the retry should be marked as a replay');
+        return again.ms;
+    });
+    await step('Level 4: the same key with a different body returns 422', async () => {
+        const r = await call('POST', '/bookings', { body: person('smoke-3', 21), headers: { 'idempotency-key': 'smoke-key-1' } });
+        expect(r.status === 422, `got ${r.status}`);
+        return r.ms;
+    });
+    await step('Level 4: pagination returns one booking per page, then the cursor ends', async () => {
+        const second = await call('POST', '/bookings', { body: person('smoke-3', 21) });
+        expect(second.status === 201, `booking got ${second.status}`);
+        const email = encodeURIComponent('smoke21@example.com');
+        const p1 = await call('GET', `/bookings?email=${email}&limit=1`);
+        expect(p1.status === 200 && p1.body.bookings.length === 1 && typeof p1.body.next_cursor === 'string', `page 1: ${JSON.stringify(p1.body)}`);
+        const p2 = await call('GET', `/bookings?email=${email}&limit=1&cursor=${encodeURIComponent(p1.body.next_cursor)}`);
+        expect(p2.status === 200 && p2.body.bookings.length === 1 && p2.body.next_cursor === null, `page 2: ${JSON.stringify(p2.body)}`);
+        expect(p1.body.bookings[0].id !== p2.body.bookings[0].id, 'pages should not repeat a booking');
+        return p2.ms;
+    });
+    await step('Level 5: the 6th attempt for one email returns 429 with Retry-After', async () => {
+        const attempt = () => call('POST', '/bookings', { body: { slot_id: 'no-such-slot', name: 'Smoke', email: 'smoke-limit@example.com' } });
+        const codes = [];
+        for (let i = 0; i < 5; i++) codes.push((await attempt()).status);
+        expect(codes.every((c) => c === 404), `the first five should be processed (404), got ${codes.join(',')}`);
+        const sixth = await attempt();
+        expect(sixth.status === 429, `6th: expected 429, got ${sixth.status}`);
+        expect(/^\d+$/.test(sixth.headers.get('retry-after') ?? ''), 'Retry-After should be whole seconds');
+        return sixth.ms;
     });
     await step('cleanup: reset to an empty slot list', async () => {
         const r = await call('POST', '/reset', { body: { slots: [] } });

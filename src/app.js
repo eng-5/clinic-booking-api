@@ -4,6 +4,7 @@ const { randomUUID } = require('crypto');
 const pino = require('pino');
 const pinoHttp = require('pino-http');
 
+const requireJson = require('./middleware/requireJson');
 const verifyApiKey = require('./middleware/internalAuth');
 const bookingsRouter = require('./routes/bookingsRouter');
 const slotsRouter = require('./routes/slotsRouter');
@@ -66,6 +67,11 @@ function createApp({ pool, clock, apiKey }) {
     // 3. Everything below needs the API key. The key check runs BEFORE the body parser so a
     //    request with no key and a broken body gets 401, not 400.
     app.use(verifyApiKey(apiKey));
+
+    // Enforce that incoming mutation requests are JSON
+    // app.use(requireJson);
+
+    // Parse the JSON body if it passes the check
     app.use(express.json({ limit: '100kb' }));
 
     // 4. Routes. Each router is a factory that receives the dependencies it needs.
