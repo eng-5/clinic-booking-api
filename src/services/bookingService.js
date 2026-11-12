@@ -1,3 +1,4 @@
+// src/services/bookingService.js
 const { randomUUID } = require('crypto');
 const AppError = require('../utils/appError');
 const { toBooking } = require('../utils/serializers');
