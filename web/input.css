@@ -1,0 +1,80 @@
+/* web/input.css: the source of public/styles.css (compiled by Tailwind; do not edit the output) */
+
+/* Inter, served from this site. The Content Security Policy only allows the site's own files. */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url(/fonts/inter-latin-400-normal.woff2) format('woff2');
+}
+
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url(/fonts/inter-latin-500-normal.woff2) format('woff2');
+}
+
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url(/fonts/inter-latin-600-normal.woff2) format('woff2');
+}
+
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url(/fonts/inter-latin-700-normal.woff2) format('woff2');
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+
+    /* A class like "flex" would otherwise override the hidden attribute and keep the element visible. */
+    [hidden] {
+        display: none !important;
+    }
+
+    body {
+        @apply bg-background text-on-surface font-sans antialiased;
+    }
+
+    :focus-visible {
+        @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-surface-container-lowest;
+    }
+}
+
+@layer utilities {
+
+    /* A gentle loading shimmer; switched off for people who ask for less motion. */
+    .skeleton {
+        background: linear-gradient(90deg, #e8edff 25%, #f1f3ff 50%, #e8edff 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.4s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+        from {
+            background-position: 200% 0;
+        }
+
+        to {
+            background-position: -200% 0;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .skeleton {
+            animation: none;
+        }
+    }
+}

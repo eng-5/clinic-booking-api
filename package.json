@@ -9,9 +9,11 @@
     "test": "cross-env NODE_ENV=test jest --runInBand",
     "smoke": "node scripts/smoke.js",
     "migrate:dev": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL",
-    "migrate:test": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL_TEST",
     "migrate:down:dev": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js down --database-url-var DATABASE_URL",
-    "migrate:prod": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL_PROD"
+    "migrate:test": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL_TEST",
+    "migrate:prod": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up --database-url-var DATABASE_URL_PROD",
+    "migrate:down:prod": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js down --database-url-var DATABASE_URL_PROD",
+    "build:css": "tailwindcss -c web/tailwind.config.js -i web/input.css -o public/styles.css --minify"
   },
   "keywords": [],
   "author": "",
@@ -26,11 +28,16 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/cli": "^4.3.5",
     "cross-env": "^10.1.0",
     "eslint": "^10.14.0",
+    "globals": "^17.14.0",
     "jest": "^30.5.2",
+    "jsdom": "26.1.0",
     "node-pg-migrate": "^9.0.0",
     "nodemon": "^3.1.14",
-    "supertest": "^7.3.1"
+    "supertest": "^7.3.1",
+    "tailwindcss": "3.4.17"
   }
 }
