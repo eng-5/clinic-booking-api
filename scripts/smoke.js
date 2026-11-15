@@ -7,7 +7,7 @@
 //   bash:        BASE_URL=https://your-service.onrender.com API_KEY=... node scripts/smoke.js
 //   PowerShell:  $env:BASE_URL="https://..."; $env:API_KEY="..."; npm run smoke
 //
-// It covers Levels 1 to 5 and finishes by resetting to an empty slot list (which also clears
+// It covers Levels 1 to 5, the web page, and the two key roles (the public key comes from /config.js), and finishes by resetting to an empty slot list (which also clears
 // idempotency keys and rate-limit counters, so it can be re-run straight away).
 
 const BASE = (process.env.BASE_URL || '').replace(/\/+$/, '');
@@ -55,6 +55,7 @@ const slots = [
     { id: 'smoke-1', provider: 'Smoke Dr', start: iso(t0), end: iso(t0 + hour / 2) },
     { id: 'smoke-2', provider: 'Smoke Dr', start: iso(t0 + hour), end: iso(t0 + 1.5 * hour) },
     { id: 'smoke-3', provider: 'Smoke Dr', start: iso(t0 + 2 * hour), end: iso(t0 + 2.5 * hour) },
+    { id: 'smoke-4', provider: 'Smoke Dr', start: iso(t0 + 3 * hour), end: iso(t0 + 3.5 * hour) },
 ];
 const person = (slot_id, n = 1) => ({ slot_id, name: `Smoke ${n}`, email: `smoke${n}@example.com` });
 const availability = async () =>
@@ -84,7 +85,35 @@ async function main() {
         expect(r.status === 401, `got ${r.status}`);
         return r.ms;
     });
-    await step('reset installs three future slots', async () => {
+    await step('the web page loads without a key', async () => {
+        const started = Date.now();
+        const res = await fetch(BASE + '/', { signal: AbortSignal.timeout(90_000) });
+        const html = await res.text();
+        expect(res.status === 200 && /<h1/.test(html), `got ${res.status}`);
+        expect(!!res.headers.get('content-security-policy'), 'the page should carry a Content-Security-Policy');
+        return Date.now() - started;
+    });
+    await step('/config.js hands the page a PUBLIC key, and never the admin key', async () => {
+        const res = await fetch(BASE + '/config.js');
+        const text = await res.text();
+        expect(res.status === 200, `got ${res.status}`);
+        expect(!text.includes(KEY), 'config.js must NEVER contain the admin key');
+        const match = text.match(/"publicKey":"([^"]+)"/);
+        expect(!!match, 'PUBLIC_API_KEY is not set on the server, so the page cannot call the API');
+        expect(match[1] !== KEY, 'the public key must differ from the admin key');
+        state.publicKey = match[1];
+    });
+    await step('the public key can list slots', async () => {
+        const r = await call('GET', '/slots', { key: state.publicKey });
+        expect(r.status === 200, `got ${r.status}`);
+        return r.ms;
+    });
+    await step('the public key is refused (403) on reset and on listing bookings', async () => {
+        const reset = await call('POST', '/reset', { key: state.publicKey, body: { slots: [] } });
+        const list = await call('GET', '/bookings?email=a%40b.com', { key: state.publicKey });
+        expect(reset.status === 403 && list.status === 403, `reset ${reset.status}, list ${list.status}`);
+    });
+    await step('reset installs four future slots', async () => {
         const r = await call('POST', '/reset', { body: { slots } });
         expect(r.status === 200, `got ${r.status} ${JSON.stringify(r.body)}`);
         return r.ms;
@@ -92,7 +121,7 @@ async function main() {
     await step('slots are listed in order and available', async () => {
         const r = await call('GET', '/slots');
         expect(r.status === 200, `got ${r.status}`);
-        expect(r.body.slots.map((s) => s.id).join() === 'smoke-1,smoke-2,smoke-3', 'wrong order or content');
+        expect(r.body.slots.map((s) => s.id).join() === 'smoke-1,smoke-2,smoke-3,smoke-4', 'wrong order or content');
         expect(r.body.slots.every((s) => s.available === true), 'slots should be available');
         return r.ms;
     });
@@ -193,6 +222,11 @@ async function main() {
         expect(sixth.status === 429, `6th: expected 429, got ${sixth.status}`);
         expect(/^\d+$/.test(sixth.headers.get('retry-after') ?? ''), 'Retry-After should be whole seconds');
         return sixth.ms;
+    });
+    await step('the public key can book a slot, as the page does', async () => {
+        const r = await call('POST', '/bookings', { key: state.publicKey, body: person('smoke-4', 31), headers: { 'idempotency-key': 'smoke-page-1' } });
+        expect(r.status === 201 && r.body.status === 'confirmed', `got ${r.status} ${JSON.stringify(r.body)}`);
+        return r.ms;
     });
     await step('cleanup: reset to an empty slot list', async () => {
         const r = await call('POST', '/reset', { body: { slots: [] } });
