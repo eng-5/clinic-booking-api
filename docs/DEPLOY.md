@@ -63,7 +63,11 @@ Environment variables:
 Render supplies `PORT` itself, and the app already reads it.
  
 **Check:** open `https://<your-service>.onrender.com/health`. You should see `{"status":"ok","database":"connected"}`.
- 
+ ### The page and the public key
+
+- Generate a second key and add it in Render as `PUBLIC_API_KEY` (a different value from `API_KEY`). Adding it restarts the service. Until it is set, the server still works but logs a warning, and the page shows a "not set up correctly" message.
+- After deploying, run the smoke test. Its new steps check that the page loads, that `/config.js` carries a public key and never the admin key, that the public key can list slots and book, and that it is refused (403) on `/reset`.
+- Open the live URL on a phone and a desktop browser and book a slot by hand before you submit.
 ## 4. Run the smoke test against the live service
  
 ```powershell

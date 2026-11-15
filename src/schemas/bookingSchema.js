@@ -19,4 +19,4 @@ const newBookingSchema = z.object({
     email,
 });
 
-module.exports = { newBookingSchema };
+module.exports = { newBookingSchema, emailSchema: email };

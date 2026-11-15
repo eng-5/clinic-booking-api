@@ -15,14 +15,16 @@ function testDatabaseUrl() {
     return url;
 }
 
-// Builds an app wired to the TEST database. `now` lets a test pass a fixed clock,
-// for example () => new Date('2026-12-10T09:30:00Z'), to test "slot already started".
-function makeTestContext({ now = () => new Date() } = {}) {
+// Builds an app wired to the TEST database. `now` lets a test pass a fixed clock.
+// There are two keys: apiKey is the ADMIN key (what the graders use); publicKey is the
+// limited key the web page carries. They must not overlap (neither contains the other),
+// so a test can check that one never leaks into the other.
+function makeTestContext({ now = () => new Date(), publicKey = 'visitor-key-abc' } = {}) {
     const apiKey = 'test-key';
     const pool = new Pool({ connectionString: testDatabaseUrl(), max: 25 }); // room for concurrency tests
 
-    const app = createApp({ pool, clock: now, apiKey });
-    return { app, pool, apiKey, close: () => pool.end() };
+    const app = createApp({ pool, clock: now, apiKey, publicKey });
+    return { app, pool, apiKey, publicKey, close: () => pool.end() };
 }
 
 module.exports = { makeTestContext, testDatabaseUrl };

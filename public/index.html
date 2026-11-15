@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CarePoint Clinic: book an appointment</title>
+    <meta name="description" content="Choose an available appointment time and book it online.">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body class="flex min-h-screen flex-col">
+    <!-- Icons: one hidden sprite, used with <use href="#i-name">. Inline, so nothing is loaded from anywhere else. -->
+    <svg width="0" height="0" class="absolute" aria-hidden="true" focusable="false">
+        <symbol id="i-plus" viewBox="0 0 24 24">
+            <g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14" />
+            </g>
+        </symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24">
+            <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+            </g>
+        </symbol>
+        <symbol id="i-circle-check" viewBox="0 0 24 24">
+            <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M8 12.5l3 3 5-6" />
+            </g>
+        </symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24">
+            <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16h.01" />
+            </g>
+        </symbol>
+        <symbol id="i-calendar" viewBox="0 0 24 24">
+            <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="5" width="16" height="16" rx="2" />
+                <path d="M16 3v4M8 3v4M4 11h16" />
+            </g>
+        </symbol>
+    </svg>
+
+    <a href="#schedule"
+        class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:rounded-lg focus:bg-primary-container focus:px-4 focus:py-2 focus:text-on-primary-container">Skip
+        to appointments</a>
+
+    <header class="border-b border-outline-variant bg-surface-container-lowest">
+        <div class="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 sm:px-6">
+            <span
+                class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-container text-on-primary-container">
+                <svg class="h-6 w-6" aria-hidden="true">
+                    <use href="#i-plus"></use>
+                </svg>
+            </span>
+            <span class="text-title-md text-on-surface">CarePoint Clinic</span>
+        </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+        <div id="config-error" hidden role="alert"
+            class="mb-6 flex items-start gap-3 rounded-xl bg-error-container p-4 text-body-md text-on-error-container">
+            <svg class="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true">
+                <use href="#i-alert"></use>
+            </svg>
+            <p>This page is not set up correctly, so it cannot show appointments. Please contact the clinic.</p>
+        </div>
+        <div id="slow-notice" hidden role="status"
+            class="mb-6 rounded-xl border border-outline-variant bg-surface-container p-4 text-body-md text-on-surface">
+            The booking service is waking up. This can take up to a minute the first time, thank you for waiting.
+        </div>
+
+        <section class="mb-8">
+            <p class="text-label-sm uppercase tracking-wide text-primary">Online booking</p>
+            <h1 class="mt-1 text-headline-lg-mobile text-on-surface md:text-headline-lg">Book your appointment</h1>
+            <p class="mt-2 max-w-2xl text-body-lg text-on-surface-variant">Choose an available time with one of our
+                providers, then enter your details to confirm.</p>
+            <p id="zone-note" class="mt-3 text-body-sm text-on-surface-variant"></p>
+        </section>
+
+        <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+            <section id="schedule" aria-labelledby="schedule-title" class="min-w-0">
+                <div class="mb-4 flex flex-wrap items-end justify-between gap-4">
+                    <h2 id="schedule-title" class="text-headline-sm text-on-surface">Available appointments</h2>
+                    <div>
+                        <label for="provider-filter"
+                            class="mb-1 block text-label-md text-on-surface-variant">Provider</label>
+                        <select id="provider-filter"
+                            class="min-h-[44px] rounded-lg border border-outline bg-surface-container-lowest px-3 text-body-md text-on-surface">
+                            <option value="">All providers</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="date-tabs" role="group" aria-label="Choose a date"
+                    class="mb-4 flex gap-2 overflow-x-auto pb-1"></div>
+
+                <div id="slots-loading" aria-busy="true" class="grid gap-3 sm:grid-cols-2">
+                    <div class="skeleton h-36 rounded-xl"></div>
+                    <div class="skeleton h-36 rounded-xl"></div>
+                    <div class="skeleton h-36 rounded-xl"></div>
+                    <div class="skeleton h-36 rounded-xl"></div>
+                </div>
+                <div id="slots-empty" hidden
+                    class="rounded-xl border border-dashed border-outline-variant bg-surface-container-low p-8 text-center text-body-md text-on-surface-variant">
+                    No appointments are available right now. Please check again later.
+                </div>
+                <div id="slots-error" hidden role="alert"
+                    class="rounded-xl bg-error-container p-4 text-on-error-container">
+                    <p id="slots-error-message" class="text-body-md"></p>
+                    <button id="retry-slots" type="button"
+                        class="mt-3 min-h-[44px] rounded-lg bg-surface-container-lowest px-4 text-label-md text-on-surface">Try
+                        again</button>
+                </div>
+                <div id="slot-list" class="grid gap-3 sm:grid-cols-2"></div>
+            </section>
+
+            <aside id="reservation" class="lg:sticky lg:top-6">
+                <div id="booking-panel"
+                    class="rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-sm">
+                    <h2 class="mb-4 text-headline-sm text-on-surface">Your appointment</h2>
+                    <p id="form-message" role="alert" hidden class="mb-4 rounded-lg p-3 text-body-md"></p>
+                    <p id="no-selection" class="text-body-md text-on-surface-variant">Choose a time from the list to
+                        continue.</p>
+
+                    <div id="selected-slot" hidden class="mb-4 rounded-lg bg-surface-container-low p-4">
+                        <p class="text-label-sm uppercase tracking-wide text-primary">Selected time</p>
+                        <p data-field="provider" class="mt-1 text-title-md text-on-surface"></p>
+                        <p data-field="when" class="mt-1 text-body-md text-on-surface-variant"></p>
+                    </div>
+
+                    <form id="booking-form" hidden novalidate class="space-y-4">
+                        <div>
+                            <label for="name" class="mb-1 block text-label-md text-on-surface">Full name <span
+                                    aria-hidden="true">*</span></label>
+                            <input id="name" name="name" type="text" autocomplete="name" required
+                                class="min-h-[44px] w-full rounded-lg border border-outline bg-surface-container-lowest px-3 text-body-md text-on-surface aria-[invalid=true]:border-error">
+                        </div>
+                        <div>
+                            <label for="email" class="mb-1 block text-label-md text-on-surface">Email address <span
+                                    aria-hidden="true">*</span></label>
+                            <input id="email" name="email" type="email" autocomplete="email" required
+                                class="min-h-[44px] w-full rounded-lg border border-outline bg-surface-container-lowest px-3 text-body-md text-on-surface aria-[invalid=true]:border-error">
+                            <p class="mt-1 text-body-sm text-on-surface-variant">Your booking reference appears on
+                                screen once you confirm.</p>
+                        </div>
+                        <button id="submit" type="submit"
+                            class="min-h-[44px] w-full rounded-lg bg-primary-container px-4 text-label-md text-on-primary-container hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">Confirm
+                            booking</button>
+                        <button id="change-slot" type="button"
+                            class="min-h-[44px] w-full rounded-lg border border-outline bg-surface-container-lowest px-4 text-label-md text-on-surface hover:bg-surface-container">Choose
+                            a different time</button>
+                    </form>
+                </div>
+
+                <section id="confirmation" hidden aria-labelledby="confirmation-title"
+                    class="rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-sm">
+                    <div class="mb-4 flex items-center gap-3">
+                        <span
+                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                            <svg class="h-6 w-6" aria-hidden="true">
+                                <use href="#i-circle-check"></use>
+                            </svg>
+                        </span>
+                        <h2 id="confirmation-title" tabindex="-1" class="text-headline-sm text-on-surface">Appointment
+                            confirmed</h2>
+                    </div>
+                    <dl class="divide-y divide-outline-variant text-body-md">
+                        <div class="flex flex-col gap-1 py-3">
+                            <dt class="text-label-md text-on-surface-variant">Booking reference</dt>
+                            <dd data-field="reference" class="break-all font-mono text-body-md text-on-surface"></dd>
+                        </div>
+                        <div class="flex flex-col gap-1 py-3">
+                            <dt class="text-label-md text-on-surface-variant">Provider</dt>
+                            <dd data-field="provider" class="text-on-surface"></dd>
+                        </div>
+                        <div class="flex flex-col gap-1 py-3">
+                            <dt class="text-label-md text-on-surface-variant">Date and time</dt>
+                            <dd data-field="when" class="text-on-surface"></dd>
+                        </div>
+                        <div class="flex flex-col gap-1 py-3">
+                            <dt class="text-label-md text-on-surface-variant">Name</dt>
+                            <dd data-field="name" class="break-words text-on-surface"></dd>
+                        </div>
+                        <div class="flex flex-col gap-1 py-3">
+                            <dt class="text-label-md text-on-surface-variant">Email</dt>
+                            <dd data-field="email" class="break-all text-on-surface"></dd>
+                        </div>
+                        <div class="flex flex-col gap-1 py-3">
+                            <dt class="text-label-md text-on-surface-variant">Status</dt>
+                            <dd data-field="status" class="text-on-surface"></dd>
+                        </div>
+                    </dl>
+                    <p class="mt-2 text-body-sm text-on-surface-variant">Please keep your booking reference. This page
+                        cannot look bookings up later.</p>
+                    <button id="book-another" type="button"
+                        class="mt-4 min-h-[44px] w-full rounded-lg bg-primary-container px-4 text-label-md text-on-primary-container hover:opacity-90">Book
+                        another appointment</button>
+                </section>
+            </aside>
+        </div>
+    </main>
+
+    <footer class="border-t border-outline-variant bg-surface-container-lowest">
+        <div class="mx-auto max-w-6xl px-4 py-6 text-body-sm text-on-surface-variant sm:px-6">
+            <p>CarePoint Clinic. Times are shown in your own time zone.</p>
+            <p class="mt-1">For a medical emergency, contact your local emergency services immediately.</p>
+        </div>
+    </footer>
+
+    <noscript>
+        <p class="p-6 text-center text-body-md">This page needs JavaScript to show and book appointments.</p>
+    </noscript>
+
+    <script src="/config.js"></script>
+    <script src="/lib.js"></script>
+    <script src="/api.js"></script>
+    <script src="/app.js"></script>
+</body>
+
+</html>

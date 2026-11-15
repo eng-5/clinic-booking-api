@@ -23,6 +23,10 @@ module.exports = ({ pool }) => ({
             // Bookings reference slots, so they must go first.
             await client.query('DELETE FROM bookings');
             await client.query('DELETE FROM slots');
+            // Reset means a clean slate: forget remembered idempotency keys and rate-limit counters,
+            // or a caller reusing a key or an email after a reset would get a surprise replay or 429.
+            await client.query('DELETE FROM idempotency_keys');
+            await client.query('DELETE FROM booking_attempts');
 
             if (slots.length > 0) {
                 await client.query(INSERT_SLOTS, [

@@ -121,6 +121,224 @@ Without the lock, that test failed in 8 of 8 runs for me; with the lock restored
 - [ ] Rewrote the concept-check answers above in my own words
 ---
  
-## Milestone 3 onward
- 
-Entries are added as each milestone is finished, using the same four headings: built, went wrong, concept check, evidence.
+## Milestone 3: booking, lookup and Level 2 validation
+
+### Built
+
+`POST /bookings` (validated with Zod, trimmed and lower-cased input, slot existence and started checks against an injected clock), `GET /bookings/:id`, a row serializer, and 60 new tests.
+
+### Went wrong, and how I found it
+
+| Symptom | Real cause | Fix | Lesson |
+|---|---|---|---|
+| A new test passed while the feature did not exist yet ("every rejected request creates no booking") | A stub creates no bookings either, so "no rows" was true for the wrong reason | The test also asserts the status of each rejected request (400, 400, 404, 400) | "Nothing happened" is not evidence that the right thing was refused. Assert the refusal as well. |
+| The spec says to trim `name` and `email`, but says nothing about `slot_id` | Trimming an identifier could make it stop matching the id I sent to `/reset` | Do not trim `slot_id`, but reject a value that is only spaces | When the spec is silent, choose the behaviour with the least surprise, then write it down as an assumption. |
+
+### Concept check (answer without looking, then correct yourself)
+
+**1. Why validate the body before touching the database?** A bad request should cost nothing and change nothing, and the database should only ever see values that have passed the rules.
+
+**2. Why read the clock once per request?** So "has the slot started?" and `created_at` refer to the same instant, and so a test with a fixed clock gives one predictable answer.
+
+**3. Why does a slot that starts exactly now count as started?** The spec says a slot that "has already started" is refused. At the exact start time it has started, so allowing it would let someone book a slot that is beginning at that moment. Stating the boundary and testing it removes the guesswork.
+
+**4. Why is `slot_id` not trimmed, when `name` and `email` are?** `name` and `email` are values from a person, and the spec asks for them to be cleaned. `slot_id` is an identifier that must match what `/reset` stored, so changing it could break the match.
+
+**5. Why does it matter that unknown fields are dropped?** Otherwise a caller could send `status: "cancelled"` or choose their own `id`. Only the three fields I validate reach the database, so the server controls everything else.
+
+**6. Why map rows through a serializer instead of returning them?** It names each field the contract promises, so an internal column such as `seq` can never leak into a response by accident.
+
+**7. Why does bad input get 400 before a missing slot gets 404?** A fixed order makes answers predictable and keeps bad input from reaching the database at all. The test "invalid input is rejected before the slot is looked up" pins it.
+
+**8. What can still go wrong today, and why did I leave it?** Two simultaneous requests can book the same slot, because nothing prevents it yet. I left it on purpose: the database rule belongs in milestone 4, together with the failing concurrency test that proves it is needed. A `test.todo` marks the gap.
+
+### Evidence, and how to rerun it
+
+Break each of these on purpose, check that a test fails, then undo it:
+
+- Remove the line `if (slot.start_at <= now) throw ...` in `bookingsController.js`.
+- Change `<=` to `<` in that line (the exactly-now test should fail).
+- Remove `.toLowerCase()` or `.trim()` in `bookingSchema.js`.
+- Change `now` to `new Date()` in the insert parameters (the `created_at` test should fail).
+- Change `randomUUID()` to `req.body.id || randomUUID()` (the "caller should not control" test should fail).
+
+**Experiments I ran myself:**
+
+- [ ] Ran the new tests before the implementation and saw them fail
+- [ ] Made each breakage above and saw a test fail
+- [ ] Explained the eight answers above in my own words
+## Milestone 4: no double booking, and cancel
+
+### Built
+
+A partial unique index, a booking insert that returns 409 when a slot is taken, an atomic cancel, a 404 for a slot deleted mid-booking, and tests that fire 20 requests at once.
+
+### Went wrong, and how I found it
+
+| Symptom | Real cause | Fix | Lesson |
+|---|---|---|---|
+| Four new tests passed against code that had no cancel, no index and no 409 | "The losers get the error shape" looped over an empty list; two cancel tests never asserted that the cancel worked; one didn't check there was only one winner | Each now asserts the count or the status first | A loop over zero items passes. Assert the length before looping over results. |
+
+### Concept check
+
+**1. Why can't application code alone stop double booking?** Checking and then inserting leaves a gap, and two simultaneous requests can both pass the check. I measured it: with a check-then-insert version and no index, all 20 simultaneous requests "won" the same slot in 4 of 5 runs.
+
+**2. Why a partial unique index instead of a plain unique constraint?** A plain one on `slot_id` would stop a slot ever being booked twice, even after a cancellation. Restricting it to `status = 'confirmed'` lets a cancelled booking free the slot.
+
+**3. Why `ON CONFLICT DO NOTHING` instead of catching the unique-violation error?** A conflict becomes an ordinary empty result, so the transaction is never aborted. After a failed statement Postgres refuses everything else in that transaction, which would block saving idempotency keys later.
+
+**4. Why is cancel one `UPDATE ... WHERE id = $1 AND status = 'confirmed'`?** It changes a booking only if it is still confirmed, in one atomic step, so ten simultaneous cancels give one winner.
+
+**5. Why can cancelling an old booking never touch the slot's new booking?** The update targets the booking id, not the slot. The old booking is already cancelled, so nothing matches and the answer is 409.
+
+**6. Why 20 parallel requests, and why does the test pool need to be large?** A smaller pool would queue requests and hide the race. Twenty connections make them genuinely overlap.
+
+**7. What does error code 23503 mean here, and why 404?** A foreign key violation: `/reset` deleted the slot after I had checked it existed. From the caller's view the slot is gone, so 404.
+
+**8. What did the naive version do?** Check-then-insert without the index let all 20 people book one slot in 4 of 5 runs, and with the index but unhandled it returned 500s.
+
+### Evidence, and how to rerun it
+
+On your test database, in Neon's SQL editor (test branch), run `DELETE FROM bookings; DROP INDEX one_confirmed_per_slot;`, then run `npm test -- concurrency`. It should fail. Restore it with `CREATE UNIQUE INDEX one_confirmed_per_slot ON bookings (slot_id) WHERE status = 'confirmed';`.
+
+- [ ] Ran the Level 3 tests before the implementation and saw them fail
+- [ ] Dropped the index, saw the concurrency test fail, and restored it
+- [ ] Ran the concurrency tests about 20 times with no failure
+- [ ] Explained the eight answers above in my own words
+
+## Milestone 5: deployment
+
+### Built
+
+A smoke script, `migrate:prod`, a keep-alive workflow, a 10-second database connection timeout, and a deploy runbook (`docs/DEPLOY.md`).
+
+### Concept check
+
+**1. Why a smoke test when I have unit and integration tests?** Those run in my environment. The smoke test checks the deployed service, with the real hosting, environment variables and database.
+
+**2. Why a separate `DATABASE_URL_PROD` variable?** So a migration can't run against the wrong database by accident.
+
+**3. Why does a keep-alive ping cost something?** Render's 750 free hours are shared across my whole workspace, and Neon's compute budget is 100 compute-unit hours per project, so keeping things awake uses them up.
+
+**4. What is the main deployment risk, and how do I measure it?** The first request after sleep. I leave the service idle for 20 minutes, run the smoke test, and record the first request's time.
+
+**5. Why migrate by hand instead of on deploy?** `node-pg-migrate` is a dev dependency, and Render doesn't install those under `NODE_ENV=production`.
+
+**Experiments I ran myself:**
+
+- [ ] Ran the smoke test against the live service
+- [ ] Measured a cold start after 20 idle minutes: ______ seconds
+- [ ] Confirmed the keep-alive runs in the Actions tab
+## Milestone 6: idempotency and pagination (Level 4)
+
+### Built
+
+Idempotency keys with fingerprints and a per-key lock, cursor pagination, and 60+ tests for both.
+
+### Went wrong, and how I found it
+
+| Symptom | Real cause | Fix | Lesson |
+|---|---|---|---|
+| A test passed against code that didn't have the feature, and another gave different results alone and in the suite | My slot fixture built the time `T010:00`, which is invalid, so `/reset` returned 400 and silently left old data in place | Fixed the fixture, and every `beforeEach` now asserts that the reset returned 200 | A fixture that fails quietly makes every later test meaningless. Make setup fail loudly. |
+| The "no lock" breakage wasn't caught in 6 runs | Rate limiting spaces simultaneous requests a few milliseconds apart, so they rarely overlapped at the moment the lock protects | The test slows the key lookup on purpose, so the overlap happens every time | A race test that depends on timing luck proves nothing. Force the interleaving. |
+
+### Concept check
+
+**1. Why store a fingerprint, not just the key?** To tell a true retry from a different request that reuses the key.
+**2. Why an advisory lock per key?** Two simultaneous retries would both find nothing and both do the work. The lock makes the second one wait and then find the first one's saved answer.
+**3. Why look the key up before validating the body?** So that "same key, different body" is always 422, whether or not the new body is valid.
+**4. Which answers are remembered, and why not 429 or 500?** Booking outcomes (201, 404, 400 started, 409). A 429 or 500 says nothing about the request itself, so a retry should be allowed to try again.
+**5. Why keyset pagination, not offset?** A booking created between pages shifts offset results and causes skipped or repeated rows.
+**6. Why fetch `limit + 1` rows?** To know whether another page exists without a second query, so an exactly-full last page ends with a null cursor.
+**7. Why validate cursors so strictly?** They come from the caller. Only cursors the server issued should be accepted, and anything else must be a clean 400, never a database error.
+**8. Why order by `seq` and not `created_at`?** `seq` is unique and increases with every insert. `created_at` can tie, especially with an injected clock.
+
+- [ ] Ran the Level 4 tests before the implementation and saw them fail
+- [ ] Removed the lock line in `idempotency.js` and saw the forced-overlap test fail
+- [ ] Explained the eight answers above in my own words
+
+## Milestone 7: rate limiting (Level 5)
+
+### Built
+
+A sliding one-minute window of 5 attempts per email, kept in Postgres, with `Retry-After`.
+
+### Went wrong, and how I found it
+
+| Symptom | Real cause | Fix | Lesson |
+|---|---|---|---|
+| The Level 3 test "same person clicking 10 times" started failing | That person is now rate limited after 5 attempts | The test now expects one 201, no 5xx, and 429 for the rest | A new rule changes old expectations. Update the old test deliberately and say why. |
+| A deliberate breakage of the window boundary wasn't caught | My mutation script changed a comment that contained the same text as the SQL, so the query was only half changed | Applied the change to the SQL line | Check that a deliberate breakage really changed what you meant it to. |
+
+### Concept check
+
+**1. Why keep the counters in Postgres, not memory?** They survive restarts and are shared by every instance.
+**2. Why a lock per email?** Ten simultaneous requests would all read "0 attempts so far" and all be let through.
+**3. Why count before validating?** The spec says failed attempts count, and an invalid request still has a usable email.
+**4. Why not record blocked requests?** They would extend their own block forever.
+**5. Why round `Retry-After` up?** Rounding down could tell a client to retry while it is still blocked, and 0 would invite an immediate retry.
+**6. Why use the injected clock?** So the minute window is tested by moving time, not waiting.
+**7. Why do idempotent replays count?** I read "every attempt" literally. It is written down as an assumption.
+**8. Why does reset clear the counters?** A caller reusing an email after a reset would otherwise get a surprise 429.
+
+- [ ] Removed the lock line in `rateLimit.js` and saw the 10-at-once test fail
+- [ ] Explained the eight answers above in my own words
+## Stage A: roles, the page host and security headers
+
+### Built
+
+Two keys with roles, an admin-only guard, `/config.js`, static hosting before the key check, security headers, and startup configuration checks. 55 new tests.
+
+### Went wrong, and how I found it
+
+| Symptom | Real cause | Fix | Lesson |
+|---|---|---|---|
+| Two new tests passed before the feature existed | One checked "the data is still there" and one checked "`/config.js` has no admin key". The old code returned 401 for both, which also satisfies them | Each now asserts the specific answer first (403, and 200 for `/config.js`) | A test can pass because of a different behaviour. State the exact outcome you expect. |
+| My first colour-contrast numbers said 1.00:1 | My pattern matched the wrong colour names in the design file | I evaluated the design's real configuration instead | If a result looks impossible, distrust the tool before the data. |
+| A startup test seemed to show the server running without its admin key | My working copy had a `.env` file that refilled the variable I had removed | Hid the `.env` for the check and the server stopped correctly | A test environment can hide or invent behaviour. Know what is in it. |
+
+### Concept check
+
+**1. Why can't the page hold a secret?** Anything the browser can send, a person with developer tools can send too.
+**2. So how is the key protected?** Its privileges are limited, so reading it gains nothing that visiting the page doesn't.
+**3. Why 403 and not 401?** 401 means we don't know who you are. 403 means we know you, but this key isn't allowed to do that.
+**4. Why does the guard run before the route's logic?** So a public key gets the same answer whether or not a booking exists, and can't use the difference to probe.
+**5. Why is the page served before the key check?** A browser has no key when it first asks for the page.
+**6. What does the Content Security Policy do?** It tells the browser to load only the site's own files, so injected script can't run or send data elsewhere.
+**7. Why is a missing public key only a warning?** A new setting must not take down a deployment that already works.
+**8. Why escape `<` in `/config.js`?** So a value can never close a `<script>` tag and start injected markup.
+
+- [ ] Ran the new tests before the implementation and saw them fail
+- [ ] Removed `requireAdmin` from the reset route and saw the test fail
+- [ ] Explained the eight answers above in my own words
+## Stage B: the booking page
+
+### Built
+
+A booking page from the blue design: slot list with day tabs and a provider filter, booking form, confirmation, and every error state, plus the logic, API layer, styles and 100+ tests.
+
+### Went wrong, and how I found it
+
+| Symptom | Real cause | Fix | Lesson |
+|---|---|---|---|
+| The whole page test suite failed to start | The newest jsdom depends on a package that only ships as an ES module, which Jest on Node 22 cannot load | Pinned jsdom 26.1.0 | "Latest" is not always compatible. Pin what you have actually run. |
+| A test said CSS classes were missing, but they existed | My test guessed how the stylesheet spells special characters. It writes a comma as `\2c` | The test now reads the stylesheet the way a browser does and undoes the escapes | Don't guess an encoding. Decode it. |
+| A stricter assertion failed: the tab read "Dec2 available" | Two adjacent elements had no space between them, so assistive technology reads them joined | Added a real space between them | The screen layout hid a problem that the text revealed. Test the text, not only the look. |
+| 2 of my 22 deliberate breakages passed the tests | One test checked the button was disabled but not its label; another didn't cover the moment before the list refreshed | Added both checks | A breakage that survives shows a gap. It is the most useful result of the exercise. |
+| The screenshot showed "UTC (UTC)" | Short and full time-zone names were identical | Name the zone once when they match | Tests cannot see how something reads. Look at it. |
+
+### Concept check
+
+**1. Why rebuild the Stitch export instead of using it?** It loaded code and fonts from other sites and used inline handlers, which the policy forbids.
+**2. Why `textContent` and not `innerHTML`?** Names and provider names come from users. As markup, they could run script on every visitor's page.
+**3. Why compile Tailwind and commit the CSS?** The page then depends on no build step or outside site, and a test fails if the committed file is out of date.
+**4. Why does a retry reuse the `Idempotency-Key`?** So a network failure followed by a retry can never book twice.
+**5. Why change the key when the details change?** Different details are a different booking. Reusing the key would be answered with 422.
+**6. Why hide slots that have started?** Booking one returns 400, so offering it would only invite an error.
+**7. Why refresh the list after a booking?** The slot is now taken. Leaving it displayed would invite a 409.
+**8. What can jsdom not tell me?** How the page looks. That needs a real browser and a human.
+
+- [ ] Ran the page tests before the page existed and saw them fail
+- [ ] Broke the page on purpose (for example, change `textContent` to `innerHTML`) and saw a test fail
+- [ ] Opened the live page on my phone and on a desktop browser
+- [ ] Explained the eight answers above in my own words

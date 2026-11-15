@@ -5,6 +5,7 @@
 
 const express = require('express');
 const bookingsController = require('../controllers/bookingsController');
+const requireAdmin = require('../middleware/requireAdmin');
 
 module.exports = ({ pool, clock }) => {
     const router = express.Router();
@@ -12,11 +13,11 @@ module.exports = ({ pool, clock }) => {
 
     router.route('/')
         .post(bookSlot)          // Book a slot (levels 1-5)
-        .get(getAllBookings);    // Level 4: list a person's bookings
+        .get(requireAdmin, getAllBookings);    // Level 4: list a person's bookings (admin only: personal data)
 
     router.route('/:id')
-        .get(getBooking)         // Level 1: get a booking
-        .delete(deleteBooking);  // Level 3: cancel a booking
+        .get(requireAdmin, getBooking)         // Level 1: get a booking (admin only)
+        .delete(requireAdmin, deleteBooking);  // Level 3: cancel a booking (admin only)
 
     return router;
 };
