@@ -380,6 +380,9 @@
             clearSelection();
         });
 
+        // Sent when the page is shown again after the data may have changed (a booking cancelled, data reset).
+        doc.addEventListener('clinic:refresh', () => { loadSlots(); });
+
         return { ready: loadSlots({ initial: true }) };
     }
 

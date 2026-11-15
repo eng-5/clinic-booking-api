@@ -6,7 +6,7 @@
 // Build the stylesheet with: npm run build:css
 
 module.exports = {
-    content: ['./public/index.html', './public/app.js'],
+    content: ['./public/index.html', './public/app.js', './public/staff.js'],
     theme: {
         extend: {
             colors: {

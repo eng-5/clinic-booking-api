@@ -52,15 +52,20 @@ function openPage({ baseUrl, publicKey, fetchImpl, timeZone = 'UTC', now, timers
     const w = dom.window;
     w.__NO_AUTOSTART__ = true;
     w.__CONFIG__ = { publicKey };
-    for (const file of ['lib.js', 'api.js', 'app.js']) w.eval(read(file));
+    // The staff scripts are loaded exactly as the page loads them (order matters). Until they exist, tests that need them fail.
+    const files = ['lib.js', 'api.js', 'app.js', 'staff-api.js', 'staff.js'].filter((f) => fs.existsSync(path.join(PUBLIC, f)));
+    for (const file of files) w.eval(read(file));
 
     let n = 0;
     const app = w.ClinicApp.start({
         fetch: fetchImpl, now: () => now, timeZone, locale, timers,
         uuid: () => `key-${++n}`, slowAfterMs: 5000,
     });
+    const staff = w.ClinicStaff
+        ? w.ClinicStaff.start({ fetch: fetchImpl, now: () => now, timeZone, locale })
+        : null;
     return {
-        window: w, document: w.document, app, timers,
+        window: w, document: w.document, app, staff, timers,
         $: (sel) => w.document.querySelector(sel),
         $$: (sel) => [...w.document.querySelectorAll(sel)],
     };

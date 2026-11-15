@@ -133,3 +133,15 @@ describe('input checks and retry identity', () => {
         expect(Lib.fingerprint({ ...base, slot_id: 's2' })).not.toBe(Lib.fingerprint(base));
     });
 });
+
+describe('date and time for the staff console', () => {
+    test('is shown in the viewer\'s own zone', () => {
+        expect(Lib.formatDateTime('2026-12-10T23:30:00Z', 'UTC', 'en-GB')).toMatch(/2026/);
+        expect(Lib.formatDateTime('2026-12-10T23:30:00Z', 'UTC', 'en-GB')).toMatch(/23:30/);
+        expect(Lib.formatDateTime('2026-12-10T23:30:00Z', 'Africa/Lagos', 'en-GB')).toMatch(/00:30/);
+    });
+
+    test('a value that is not a date is returned as it is, instead of crashing the page', () => {
+        expect(Lib.formatDateTime('nonsense', 'UTC', 'en-GB')).toBe('nonsense');
+    });
+});

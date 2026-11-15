@@ -3,6 +3,7 @@
 // The page must obey the same rules as the Content Security Policy the server sends: its own
 // files only, no inline script or style, nothing from another site, no secrets, no unsafe DOM
 // writes. A real browser would enforce these at runtime; here they are enforced before deploy.
+// It also enforces who may know about the admin side: only the staff scripts.
 
 const fs = require('fs');
 const os = require('os');
@@ -13,8 +14,11 @@ const ROOT = path.join(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
 const read = (f) => fs.readFileSync(path.join(PUBLIC, f), 'utf8');
 const html = read('index.html');
-const scripts = ['config.js', 'lib.js', 'api.js', 'app.js'];
-const ownJs = ['lib.js', 'api.js', 'app.js'];
+
+const publicJs = ['lib.js', 'api.js', 'app.js'];          // what every visitor runs
+const staffJs = ['staff-api.js', 'staff.js'];             // only does anything after the admin key is typed
+const ownJs = [...publicJs, ...staffJs];
+const scripts = ['config.js', ...ownJs];
 
 describe('index.html obeys the Content Security Policy', () => {
     test('has no inline script', () => {
@@ -38,7 +42,7 @@ describe('index.html obeys the Content Security Policy', () => {
             expect(fs.existsSync(path.join(PUBLIC, m[1]))).toBe(true);
         }
     });
-    test('loads its scripts in dependency order: config, lib, api, app', () => {
+    test('loads its scripts in dependency order: config, lib, api, app, staff-api, staff', () => {
         const order = [...html.matchAll(/<script[^>]*\bsrc="\/([^"]+)"/gi)].map((m) => m[1]);
         expect(order).toEqual(scripts);
     });
@@ -50,19 +54,47 @@ describe('index.html obeys the Content Security Policy', () => {
     });
 });
 
+describe('the staff area in the markup', () => {
+    test('is hidden until opened, and the booking view is a separate section', () => {
+        expect(html).toMatch(/<section[^>]*id="staff"[^>]*\bhidden\b/i);
+        expect(html).toMatch(/id="booking-view"/);
+        expect(html).toMatch(/id="staff-console"[^>]*\bhidden\b|\bhidden\b[^>]*id="staff-console"/i);
+    });
+    test('the key box is a password field that browsers are told not to remember', () => {
+        const input = html.match(/<input[^>]*id="staff-key"[^>]*>/i)[0];
+        expect(input).toMatch(/type="password"/i);
+        expect(input).toMatch(/autocomplete="off"/i);
+    });
+    test('has a way in from the footer and a way back', () => {
+        expect(html).toMatch(/id="open-staff"/);
+        expect(html).toMatch(/id="close-staff"/);
+    });
+});
+
 describe('the scripts are safe to ship', () => {
     test.each(ownJs)('%s never writes HTML from data or evaluates strings', (file) => {
         expect(read(file)).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|\beval\s*\(|new Function|setAttribute\(\s*['"]on/);
     });
-    test.each(ownJs)('%s never mentions the admin-only routes or keys', (file) => {
-        expect(read(file)).not.toMatch(/\/reset|API_KEY|apiKey|adminKey/);
+    test.each(ownJs)('%s never stores anything or logs: no storage, cookies, or console output (the admin key must not leak)', (file) => {
+        expect(read(file)).not.toMatch(/localStorage|sessionStorage|document\.cookie|indexedDB|console\./);
     });
-    test('only api.js talks to the network', () => {
+    test.each(publicJs)('%s (what every visitor runs) never mentions the admin-only routes or any key but the public one', (file) => {
+        expect(read(file)).not.toMatch(/\/reset|API_KEY|apiKey|adminKey|DELETE/);
+    });
+    test('the admin routes appear ONLY in the staff scripts', () => {
+        expect(read('staff-api.js')).toMatch(/\/reset/);
+        expect(read('staff-api.js')).toMatch(/adminKey/);
+    });
+    test('the public scripts never load or call the staff scripts', () => {
+        for (const file of publicJs) expect(read(file)).not.toMatch(/ClinicStaff|staff-api|staff\.js/);
+    });
+    test('only the two api files talk to the network', () => {
         expect(read('lib.js')).not.toMatch(/\bfetch\b/);
         expect(read('app.js')).not.toMatch(/\bfetch\s*\(/);
+        expect(read('staff.js')).not.toMatch(/\bfetch\s*\(/);
     });
-    test('app.js sets text with textContent, never from markup', () => {
-        expect(read('app.js')).toMatch(/textContent/);
+    test.each(['app.js', 'staff.js'])('%s sets text with textContent, never from markup', (file) => {
+        expect(read(file)).toMatch(/textContent/);
     });
 });
 
@@ -90,8 +122,10 @@ describe('styles', () => {
 
     test('every utility class the page uses exists in the stylesheet (a typo would silently lose styling)', () => {
         const fromHtml = [...html.matchAll(/\sclass="([^"]*)"/g)].flatMap((m) => m[1].split(/\s+/));
-        const block = read('app.js').match(/\/\/ <classes>([\s\S]*?)\/\/ <\/classes>/)[1];
-        const fromJs = [...block.matchAll(/'([^']*)'/g)].flatMap((m) => m[1].split(/\s+/));
+        const fromJs = ['app.js', 'staff.js'].flatMap((file) => {
+            const block = read(file).match(/\/\/ <classes>([\s\S]*?)\/\/ <\/classes>/)[1];
+            return [...block.matchAll(/'([^']*)'/g)].flatMap((m) => m[1].split(/\s+/));
+        });
         // Read the stylesheet the way a browser does: CSS spells special characters with escapes
         // (a comma becomes \2c, a colon \:), so undo them to get the class names it really defines.
         const unescapeCss = (s) => s.replace(/\\([0-9a-fA-F]{1,6}) ?|\\(.)/g, (m, hex, ch) => (hex ? String.fromCodePoint(parseInt(hex, 16)) : ch));

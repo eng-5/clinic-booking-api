@@ -57,6 +57,14 @@
         return `${time.format(new Date(startIso))} \u2013 ${time.format(new Date(endIso))}`;
     }
 
+    // For the staff console: a full date and time in the viewer's zone. A value that is not a date
+    // is returned unchanged, so one odd record can never break the whole list.
+    function formatDateTime(iso, timeZone, locale) {
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) return String(iso);
+        return new Intl.DateTimeFormat(locale, { timeZone, dateStyle: 'medium', timeStyle: 'short' }).format(date);
+    }
+
     const durationMinutes = (startIso, endIso) => Math.round((Date.parse(endIso) - Date.parse(startIso)) / 60000);
 
     function zoneLabel(timeZone, iso, locale) {
@@ -111,7 +119,7 @@
         [slot_id, String(name || '').trim(), String(email || '').trim().toLowerCase()].join('\u0000');
 
     return {
-        isStarted, visibleSlots, groupByDate, formatTimeRange, durationMinutes, zoneLabel, longDate,
+        isStarted, visibleSlots, groupByDate, formatTimeRange, formatDateTime, durationMinutes, zoneLabel, longDate,
         initials, retryAfterSeconds, rateMessage, describeError, isPlausibleEmail, fingerprint, NETWORK_MESSAGE,
     };
 });
