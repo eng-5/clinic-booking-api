@@ -4,8 +4,10 @@ const { randomUUID } = require('crypto');
 const pino = require('pino');
 const pinoHttp = require('pino-http');
 
-const requireJson = require('./middleware/requireJson');
-const verifyApiKey = require('./middleware/internalAuth');
+const authenticate = require('./middleware/internalAuth');
+const requireAdmin = require('./middleware/requireAdmin');
+const securityHeaders = require('./middleware/securityHeaders');
+const { mountSite } = require('./site');
 const bookingsRouter = require('./routes/bookingsRouter');
 const slotsRouter = require('./routes/slotsRouter');
 const resetRouter = require('./routes/resetRouter');
@@ -15,7 +17,8 @@ const errorController = require('./controllers/errorController');
 // forge log lines or bloat the logs.
 const REQUEST_ID_PATTERN = /^[\w-]{1,64}$/;
 
-function createApp({ pool, clock, apiKey }) {
+// apiKey is the ADMIN key. publicKey (optional) is the low-privilege key the web page carries.
+function createApp({ pool, clock, apiKey, publicKey }) {
     const app = express();
     app.disable('x-powered-by');
 
@@ -53,6 +56,9 @@ function createApp({ pool, clock, apiKey }) {
         ],
     }));
 
+    // Tell browsers to load only this site's own files (see securityHeaders.js).
+    app.use(securityHeaders);
+
     // 2. Health: no key, checks the database. Keep-alive pings and the host's checks use this.
     app.get('/health', async (req, res) => {
         try {
@@ -66,18 +72,16 @@ function createApp({ pool, clock, apiKey }) {
 
     // 3. Everything below needs the API key. The key check runs BEFORE the body parser so a
     //    request with no key and a broken body gets 401, not 400.
-    app.use(verifyApiKey(apiKey));
+    // The web page and /config.js are served here, BEFORE the key check: a browser has no key yet.
+    mountSite(app, { publicKey });
 
-    // Enforce that incoming mutation requests are JSON
-    // app.use(requireJson);
-
-    // Parse the JSON body if it passes the check
+    app.use(authenticate({ adminKey: apiKey, publicKey }));
     app.use(express.json({ limit: '100kb' }));
 
     // 4. Routes. Each router is a factory that receives the dependencies it needs.
     app.use('/bookings', bookingsRouter({ pool, clock }));
     app.use('/slots', slotsRouter({ pool, clock }));
-    app.use('/reset', resetRouter({ pool, clock }));
+    app.use('/reset', requireAdmin, resetRouter({ pool, clock })); // admin only
 
     // 5. Unknown routes, then the one error handler. Must stay last.
     app.use((req, res) => res.status(404).json({ error: 'route not found' }));
